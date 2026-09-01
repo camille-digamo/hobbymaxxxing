@@ -9,8 +9,6 @@ import os
 from google.oauth2.service_account import Credentials
 from typing import List, Tuple, Dict, Any
 from .utils import (
-    GOOGLE_SERVICE_ACCOUNT_FILE,
-    GOOGLE_SERVICE_ACCOUNT_JSON,
     GOOGLE_SHEETS_ID,
     get_current_date
 )
@@ -19,6 +17,9 @@ from .utils import (
 def get_google_sheets_client():
     """Initialize and return Google Sheets client."""
     try:
+        # Import credentials config only when needed to avoid module-level import issues
+        from .utils import GOOGLE_SERVICE_ACCOUNT_FILE, GOOGLE_SERVICE_ACCOUNT_JSON
+
         # Define the scope for Google Sheets API
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 

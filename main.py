@@ -14,6 +14,7 @@ from src.utils import validate_environment
 from src.youtube_service import search_youtube, filter_available_videos
 from src.claude_service import get_claude_recommendation, analyze_topic_interest, generate_topic_expansion
 from src.sheets_service import (
+    get_google_sheets_client,
     get_next_topic,
     get_watched_videos,
     get_feedback_history,
@@ -47,31 +48,7 @@ from src.utils import (
 
 # validate_environment function now available from src.utils
 
-def get_google_sheets_client():
-    """Initialize and return Google Sheets client."""
-    try:
-        # Define the scope for Google Sheets API
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-
-        # Load credentials from service account file or JSON content
-        if GOOGLE_SERVICE_ACCOUNT_FILE:
-            # Use file path method (local development)
-            creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scope)
-        elif GOOGLE_SERVICE_ACCOUNT_JSON:
-            # Use JSON content method (GitHub Actions, Railway)
-            import json
-            service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-            creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
-        else:
-            raise ValueError("No Google service account credentials found")
-
-        # Create gspread client
-        client = gspread.authorize(creds)
-
-        return client
-    except Exception as e:
-        print(f"❌ Error connecting to Google Sheets: {e}")
-        sys.exit(1)
+# get_google_sheets_client now available from src.sheets_service
 
 def calculate_topic_interest_scores() -> Dict[str, float]:
     """Calculate interest scores for topics based on recent ratings."""

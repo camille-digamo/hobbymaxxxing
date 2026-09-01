@@ -829,6 +829,10 @@ class HobbyMaxxingBot:
                     if message.content.lower() == "test":
                         await message.reply("✅ Bot is receiving messages correctly!")
 
+                    # Check for manual video requests (natural language patterns)
+                    if await self.is_video_request(message.content):
+                        await self.show_topic_menu(message)
+
         @self.client.event
         async def on_message_edit(message_before, message_after):
             """Handle message edits - treat as new message for notes."""
@@ -1116,6 +1120,11 @@ What interests you? 🎯"""
     async def process_topic_selection(self, user_response: str, selection_data: dict, message) -> bool:
         """Process user's topic selection and add to Google Sheets."""
         try:
+            # Check if this is a video request menu selection
+            if selection_data.get('type') == 'video_request_menu':
+                return await self.handle_video_topic_selection(user_response, selection_data, message)
+
+            # Original topic expansion logic
             suggested_topics = selection_data['suggested_topics']
             original_topic = selection_data['original_topic']
             parent_topic = selection_data['parent_topic']
@@ -1478,6 +1487,262 @@ What interests you? 🎯"""
 
         except Exception as e:
             print(f"❌ Error asking for topic clarification: {e}")
+
+    async def is_video_request(self, message_content):
+        """Check if message is a natural video request."""
+        content_lower = message_content.lower().strip()
+
+        # Direct keywords
+        direct_keywords = ['video', 'recommend', 'show me videos', 'topics']
+        if any(keyword in content_lower for keyword in direct_keywords):
+            return True
+
+        # Natural language patterns
+        request_patterns = [
+            # "Can you" patterns
+            r'can you.*recommend.*me.*',
+            r'can you.*send.*me.*video',
+            r'can you.*show.*me.*',
+            r'can you.*find.*me.*',
+            r'can you.*pick.*something',
+
+            # "I" statements
+            r'i need.*something.*to.*watch',
+            r'i want.*to.*watch.*',
+            r'i\'m.*looking.*for.*',
+            r'i.*need.*video',
+            r'i.*want.*video',
+
+            # Question patterns
+            r'what.*should.*i.*watch',
+            r'what.*can.*i.*learn',
+            r'got.*any.*recommendations',
+            r'any.*suggestions',
+
+            # Simple requests
+            r'send.*me.*something',
+            r'show.*me.*something',
+            r'give.*me.*something',
+            r'pick.*something.*for.*me',
+            r'something.*to.*watch',
+            r'something.*to.*learn',
+
+            # Casual requests
+            r'what.*to.*watch',
+            r'need.*entertainment',
+            r'bored.*',
+            r'looking.*for.*content',
+        ]
+
+        import re
+        for pattern in request_patterns:
+            if re.search(pattern, content_lower):
+                return True
+
+        return False
+
+    async def show_topic_menu(self, message):
+        """Show available topics menu for manual video requests."""
+        try:
+            # Get all existing topics
+            existing_topics = self.get_existing_topics()
+
+            if not existing_topics:
+                await message.reply("❌ **No topics found!**\n\nAdd some topics first by saying something like:\n*\"I'm interested in guitar\"*")
+                return
+
+            # Create numbered list
+            topic_list = []
+            for i, (topic, parent_topic) in enumerate(existing_topics[:15]):  # Limit to 15 topics
+                topic_list.append(f"**{i+1}.** {topic} *({parent_topic})*")
+
+            # Add surprise option
+            surprise_number = len(topic_list) + 1
+            topic_list.append(f"**{surprise_number}.** 🎲 Surprise me!")
+
+            topics_text = "\n".join(topic_list)
+
+            menu_text = f"""🎯 **Pick a topic for a video recommendation:**
+
+{topics_text}
+
+**Reply with the number** (e.g., "3" or "surprise me")"""
+
+            # Send the menu
+            menu_message = await message.reply(menu_text)
+
+            # Track this request
+            self.awaiting_topic_selection[menu_message.id] = {
+                'type': 'video_request_menu',
+                'available_topics': existing_topics,
+                'surprise_number': surprise_number,
+                'original_message': message,
+                'channel_id': message.channel.id,
+                'asked_at': datetime.now()
+            }
+
+            print(f"✅ Showed video topic menu with {len(existing_topics)} topics")
+
+        except Exception as e:
+            print(f"❌ Error showing topic menu: {e}")
+            await message.reply("❌ Sorry, couldn't load your topics right now. Try again later!")
+
+    async def handle_video_topic_selection(self, user_response: str, selection_data: Dict, message) -> bool:
+        """Handle video topic selection from menu."""
+        try:
+            response = user_response.strip()
+            available_topics = selection_data['available_topics']
+            surprise_number = selection_data['surprise_number']
+
+            selected_topic = None
+            parent_topic = ""
+            topic_row = 0
+            is_surprise = False
+
+            # Check if it's a number
+            try:
+                selection = int(response)
+
+                if selection == surprise_number:
+                    # Surprise me!
+                    is_surprise = True
+                    # Get a random topic using the smart selection
+                    selected_topic, parent_topic, topic_row = get_next_topic()
+                elif 1 <= selection <= len(available_topics):
+                    # Valid topic selection
+                    topic_info = available_topics[selection - 1]
+                    selected_topic = topic_info[0]
+                    parent_topic = topic_info[1]
+                    topic_row = selection + 1  # Account for header row
+                else:
+                    await message.reply(f"❌ Please pick a number between 1 and {surprise_number}")
+                    return False
+
+            except ValueError:
+                # Not a number - check for text matches
+                response_lower = response.lower()
+
+                if 'surprise' in response_lower or response_lower == str(surprise_number):
+                    is_surprise = True
+                    selected_topic, parent_topic, topic_row = get_next_topic()
+                else:
+                    # Try to match topic names
+                    for i, (topic, parent) in enumerate(available_topics):
+                        if response_lower in topic.lower() or topic.lower() in response_lower:
+                            selected_topic = topic
+                            parent_topic = parent
+                            topic_row = i + 2  # Account for header row
+                            break
+
+                    if not selected_topic:
+                        await message.reply("❌ I couldn't find that topic. Please use the number or exact topic name.")
+                        return False
+
+            # Process the video recommendation
+            await message.add_reaction("✅")
+
+            if is_surprise:
+                await message.reply(f"🎲 **Surprise pick: {selected_topic}!**\n⏳ Finding a great video...")
+            else:
+                await message.reply(f"🎯 **Great choice: {selected_topic}!**\n⏳ Finding the perfect video...")
+
+            await self.process_video_recommendation_flow(message, selected_topic, parent_topic, topic_row, is_surprise)
+
+            # Clean up the awaiting state
+            if message.id in self.awaiting_topic_selection:
+                del self.awaiting_topic_selection[message.id]
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Error handling video topic selection: {e}")
+            await message.reply("❌ Something went wrong processing your selection. Try again!")
+            return False
+
+    async def process_video_recommendation_flow(self, message, topic, parent_topic, topic_row, is_surprise=False):
+        """Process the complete video recommendation flow."""
+        try:
+            # Get feedback history
+            feedback_history = get_feedback_history()
+            watched_videos = get_watched_videos()
+
+            # Search YouTube
+            all_videos = search_youtube(topic, parent_topic)
+
+            if not all_videos:
+                await message.reply(f"❌ **No videos found for '{topic}'**")
+                return
+
+            # Filter watched videos
+            available_videos = filter_available_videos(all_videos, watched_videos)
+
+            if not available_videos:
+                await message.reply(f"🎉 **You've watched all videos for '{topic}'!**\n\nTry another topic.")
+                return
+
+            # Get Claude recommendation
+            recommendation = get_claude_recommendation(available_videos, topic, feedback_history)
+
+            # Find selected video
+            selected_video = None
+            for video in available_videos:
+                if video["video_id"] == recommendation["video_id"]:
+                    selected_video = video
+                    break
+
+            if not selected_video:
+                await message.reply("❌ Couldn't find the recommended video. Try again!")
+                return
+
+            # Record in Google Sheets
+            record_video_recommendation(
+                selected_video["title"],
+                selected_video["channel_title"],
+                topic,
+                parent_topic,
+                recommendation["video_id"],
+                topic_row
+            )
+
+            # Create Discord embed
+            embed = discord.Embed(
+                title=selected_video["title"],
+                url=f"https://www.youtube.com/watch?v={recommendation['video_id']}",
+                description=recommendation["blurb"],
+                color=0xFF0000
+            )
+            embed.set_thumbnail(url=selected_video["thumbnail_url"])
+
+            if is_surprise:
+                embed.set_footer(text=f"🎲 Surprise! • Channel: {selected_video['channel_title']} • Topic: {topic}")
+            else:
+                embed.set_footer(text=f"Channel: {selected_video['channel_title']} • Topic: {topic}")
+
+            embed.add_field(
+                name="Rate This Video",
+                value="👍 Liked • 👎 Didn't Like • ❤️ Loved • 😴 Boring",
+                inline=False
+            )
+
+            # Post video
+            video_message = await message.channel.send(embed=embed)
+
+            # Add reactions
+            for emoji in ['👍', '👎', '❤️', '😴']:
+                await video_message.add_reaction(emoji)
+
+            # Store for reaction handling
+            self.posted_videos[video_message.id] = {
+                'video_url': f"https://www.youtube.com/watch?v={recommendation['video_id']}",
+                'topic': topic,
+                'video_title': selected_video["title"]
+            }
+
+            print(f"✅ Manual video posted: {selected_video['title']}")
+
+        except Exception as e:
+            print(f"❌ Error in video recommendation flow: {e}")
+            await message.reply("❌ Something went wrong. Please try again!")
 
     async def suggest_topic_expansion(self, channel, raw_topic: str, analysis: Dict[str, Any]):
         """Suggest topic expansions when topic is already specific enough."""

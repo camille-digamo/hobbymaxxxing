@@ -120,8 +120,8 @@ def get_next_topic() -> Tuple[str, str, str]:
         records = topics_worksheet.get_all_records()
 
         if not records:
-            print("❌ No topics found in the sheet")
-            sys.exit(1)
+            print("❌ No topics found in the sheet - returning default topic")
+            return "general learning", "", 2
 
         # Get interest scores from video ratings
         interest_scores = calculate_topic_interest_scores()
@@ -215,7 +215,8 @@ def get_next_topic() -> Tuple[str, str, str]:
 
     except Exception as e:
         print(f"❌ Error in smart topic selection: {e}")
-        sys.exit(1)
+        print("🔄 Falling back to default topic...")
+        return "general learning", "", 2
 
 def get_watched_videos() -> Dict[str, bool]:
     """Get a dict of video URLs that have been watched or are still pending."""
@@ -424,7 +425,7 @@ def record_video_recommendation(video_title: str, channel: str, topic: str, pare
 
     except Exception as e:
         print(f"❌ Error writing to Google Sheets: {e}")
-        sys.exit(1)
+        print("⚠️  Continuing without recording to sheets...")
 
 def search_youtube(topic: str, parent_topic: str = "", max_results: int = 8) -> List[Dict[str, Any]]:
     """Search YouTube for videos on the given topic."""
@@ -465,7 +466,8 @@ def search_youtube(topic: str, parent_topic: str = "", max_results: int = 8) -> 
 
     except Exception as e:
         print(f"❌ Error searching YouTube: {e}")
-        sys.exit(1)
+        print("🔄 Returning empty video list...")
+        return []
 
 def get_claude_recommendation(videos: List[Dict[str, Any]], topic: str, feedback_history: Dict[str, Any]) -> Dict[str, str]:
     """Ask Claude to pick the best video and write a blurb."""
@@ -551,10 +553,18 @@ Your response must be valid JSON only, no other text."""
         print(f"❌ Error parsing Claude's response as JSON: {e}")
         print(f"Full response was: {response.content[0].text}")
         print(f"Extracted JSON text was: {json_text}")
-        sys.exit(1)
+        # Return fallback recommendation instead of crashing
+        return {
+            "video_id": videos[0]["video_id"] if videos else "unknown",
+            "blurb": f"A great video to help you learn more about {topic}!"
+        }
     except Exception as e:
         print(f"❌ Error getting Claude recommendation: {e}")
-        sys.exit(1)
+        # Return fallback recommendation instead of crashing
+        return {
+            "video_id": videos[0]["video_id"] if videos else "unknown",
+            "blurb": f"An interesting video about {topic} to check out!"
+        }
 
 class HobbyMaxxingBot:
     """Persistent Discord bot that handles video recommendations and feedback."""

@@ -53,7 +53,8 @@ def get_google_sheets_client():
         return _sheets_client
     except Exception as e:
         print(f"❌ Failed to initialize Google Sheets client: {e}")
-        sys.exit(1)
+        print("⚠️  Google Sheets operations will not work until this is resolved")
+        raise  # Re-raise the exception instead of exiting
 
 
 def retry_on_quota_exceeded(func, max_retries=3):
@@ -271,7 +272,7 @@ def record_video_recommendation(video_title: str, channel: str, topic: str, pare
 
     except Exception as e:
         print(f"❌ Error writing to Google Sheets: {e}")
-        sys.exit(1)
+        print("⚠️  Video recommendation not recorded, but continuing...")
 
 
 def update_video_feedback(video_url: str, feedback: str):

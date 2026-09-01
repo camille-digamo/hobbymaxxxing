@@ -52,9 +52,10 @@ def validate_environment():
         missing.append("GOOGLE_SERVICE_ACCOUNT_FILE (with existing file) or GOOGLE_SERVICE_ACCOUNT_JSON")
 
     if missing:
-        print(f"❌ Missing required environment variables: {', '.join(missing)}")
+        error_msg = f"❌ Missing required environment variables: {', '.join(missing)}"
+        print(error_msg)
         print("Please check your .env file and compare with .env.example")
-        sys.exit(1)
+        raise ValueError(f"Missing environment variables: {', '.join(missing)}")
 
 def get_current_date():
     """Get current date in the standard format."""

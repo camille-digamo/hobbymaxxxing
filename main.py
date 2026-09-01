@@ -1521,9 +1521,12 @@ What interests you? 🎯"""
             watched_videos = get_watched_videos()
 
             # Search YouTube
+            print(f"🔍 DEBUGGING: Searching for topic='{topic}', parent_topic='{parent_topic}'")
             all_videos = search_youtube(topic, parent_topic)
+            print(f"🔍 DEBUGGING: YouTube returned {len(all_videos)} videos")
 
             if not all_videos:
+                print(f"❌ DEBUGGING: No videos found in YouTube search")
                 await message.reply(f"❌ **No videos found for '{topic}'**\n\n🎯 Let me suggest some related topics you could explore instead...")
 
                 # Trigger topic expansion when no videos found
@@ -1531,9 +1534,12 @@ What interests you? 🎯"""
                 return
 
             # Filter watched videos
+            print(f"🔍 DEBUGGING: Filtering {len(all_videos)} videos against {len(watched_videos)} watched URLs")
             available_videos = filter_available_videos(all_videos, watched_videos)
+            print(f"🔍 DEBUGGING: {len(available_videos)} videos available after filtering")
 
             if not available_videos:
+                print(f"❌ DEBUGGING: All videos filtered out as already watched")
                 await message.reply(f"🎉 **You've watched all videos for '{topic}'!**\n\n🎯 Let me suggest some related topics to explore next...")
 
                 # Trigger topic expansion when all videos watched

@@ -1065,8 +1065,8 @@ What interests you? 🎯"""
             # Get feedback history for personalized recommendations
             feedback_history = get_feedback_history()
 
-            # Search YouTube for this topic
-            all_videos = search_youtube(topic, parent_topic)
+            # Search YouTube for this topic (no parent topic for new topics)
+            all_videos = search_youtube(topic)
 
             # No need to filter - these are guaranteed to be new videos
             available_videos = all_videos
@@ -1126,7 +1126,9 @@ What interests you? 🎯"""
 
         except Exception as e:
             print(f"❌ Error continuing with new topics: {e}")
-            await channel.send("❌ There was an error finding a video for the new topics. Please try running the bot again.")
+            import traceback
+            traceback.print_exc()
+            await channel.send(f"❌ There was an error finding a video for the new topics: {e}")
 
     async def detect_topic_interest(self, message_content: str, channel) -> bool:
         """Detect if user is expressing interest in a topic organically."""

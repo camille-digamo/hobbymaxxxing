@@ -2,7 +2,15 @@
 Anthropic Claude AI integration for video recommendations and topic analysis
 """
 
-from anthropic import Anthropic
+# Robust import handling for Railway deployment
+try:
+    from anthropic import Anthropic
+    ANTHROPIC_API_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️  Warning: Anthropic API client not available: {e}")
+    ANTHROPIC_API_AVAILABLE = False
+    Anthropic = None
+
 from typing import List, Dict, Any
 import json
 import re
@@ -12,6 +20,21 @@ from .utils import ANTHROPIC_API_KEY
 def get_claude_recommendation(videos: List[Dict[str, Any]], topic: str, feedback_history: Dict[str, Any]) -> Dict[str, str]:
     """Ask Claude to pick the best video and write a blurb."""
     print("🤖 Asking Claude to pick the best video...")
+
+    # Check if Anthropic API is available
+    if not ANTHROPIC_API_AVAILABLE or not Anthropic:
+        print("❌ Anthropic API client not available, using fallback recommendation")
+        return {
+            "video_id": videos[0]["video_id"] if videos else "unknown",
+            "blurb": f"A great video to help you learn more about {topic}!"
+        }
+
+    if not ANTHROPIC_API_KEY:
+        print("❌ Anthropic API key not configured, using fallback recommendation")
+        return {
+            "video_id": videos[0]["video_id"] if videos else "unknown",
+            "blurb": f"A great video to help you learn more about {topic}!"
+        }
 
     try:
         client = Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -97,6 +120,16 @@ Your response must be valid JSON only, no other text."""
 
 def analyze_topic_interest(raw_topic: str, existing_topics: List[str]) -> Dict[str, Any]:
     """Use Claude to analyze and expand topic interest."""
+    if not ANTHROPIC_API_AVAILABLE or not Anthropic:
+        print("❌ Anthropic API not available for topic analysis")
+        return {
+            "is_specific": True,
+            "suggested_parent": "general",
+            "specific_subtopics": [raw_topic],
+            "intersection_topics": [],
+            "beginner_friendly": [f"beginner {raw_topic}"]
+        }
+
     try:
         client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -153,6 +186,16 @@ Focus on practical, learnable topics that would have good YouTube content."""
 
 def generate_topic_expansion(original_topic: str, parent_topic: str) -> List[str]:
     """Generate topic expansion suggestions using Claude."""
+    if not ANTHROPIC_API_AVAILABLE or not Anthropic:
+        print("❌ Anthropic API not available for topic expansion, using fallback")
+        return [
+            f"advanced {original_topic}",
+            f"beginner {original_topic}",
+            f"{original_topic} techniques",
+            f"{original_topic} equipment",
+            f"{original_topic} tips"
+        ]
+
     try:
         client = Anthropic(api_key=ANTHROPIC_API_KEY)
 

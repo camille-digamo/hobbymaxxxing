@@ -1,5 +1,16 @@
 # YouTube Hobby Maxxxer - Debugging Guide
 
+## Quick Railway Dependency Check
+
+**If getting import errors like "name 'build' is not defined" on Railway:**
+
+```bash
+# Check if all packages are installed correctly
+python3 check_dependencies.py
+```
+
+This will show exactly which packages are missing on Railway.
+
 ## YouTube Search Debugging
 
 If the bot says "No videos found" but you can find videos manually on YouTube, use this debugging tool:
@@ -104,7 +115,19 @@ from src.sheets_service import get_google_sheets_client
 
 ## Common Error Patterns
 
-### Pattern 1: Rate Limiting Storm
+### Pattern 1: Railway Import Errors
+```
+❌ Error searching YouTube: name 'build' is not defined
+❌ Error generating related topics: name 'Anthropic' is not defined
+```
+**Cause:** Railway environment missing required Python packages
+**Solution:** 
+1. Run `python3 check_dependencies.py` to identify missing packages
+2. Ensure `requirements.txt` is properly configured
+3. Trigger Railway rebuild to reinstall packages
+4. The code now has fallback handling for missing imports
+
+### Pattern 2: Rate Limiting Storm
 ```
 🔑 Using Google service account JSON content
 ❌ Error reading feedback history: APIError: [429]
@@ -130,10 +153,56 @@ from src.sheets_service import get_google_sheets_client
 ```
 **Solution:** Check logs for actual exception details, recent fix shows real errors.
 
+## Railway Deployment Issues
+
+### If Getting Import Errors on Railway
+
+**Symptoms:**
+- `❌ Error searching YouTube: name 'build' is not defined`
+- `❌ Error generating related topics: name 'Anthropic' is not defined`
+
+**Solutions:**
+
+1. **Check Dependencies on Railway:**
+   ```bash
+   python3 check_dependencies.py
+   ```
+
+2. **Force Rebuild Railway App:**
+   - Go to Railway dashboard → Settings → Redeploy
+   - This forces a clean package installation
+
+3. **Manual Package Fix:**
+   - Railway console → Run: `bash fix_railway_deps.sh`
+   - Or manually: `pip install --no-cache-dir -r requirements.txt`
+
+4. **Verify Python Version:**
+   - Railway should use Python 3.11 (specified in `runtime.txt`)
+   - Check Railway build logs for Python version used
+
+### Railway Environment Variables
+
+Make sure these are set in Railway dashboard:
+```
+YOUTUBE_API_KEY=your_key_here
+ANTHROPIC_API_KEY=your_key_here
+DISCORD_BOT_TOKEN=your_token_here
+DISCORD_CHANNEL_ID=your_channel_id
+DISCORD_USER_ID=your_user_id
+GOOGLE_SHEETS_ID=your_sheet_id
+GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+```
+
+**Do NOT set these on Railway:**
+```
+❌ GOOGLE_SERVICE_ACCOUNT_FILE (use _JSON instead)
+```
+
 ## Getting Help
 
 If debugging doesn't solve the issue:
-1. Run the debug tool and share the output
-2. Check Railway logs for error details  
-3. Verify the exact topic name and parent topic in Google Sheets
-4. Test the same search manually on YouTube.com to confirm videos exist
+1. Run `python3 check_dependencies.py` and share the output
+2. Run `python3 debug_youtube_search.py "your topic"` locally
+3. Check Railway logs for error details  
+4. Verify the exact topic name and parent topic in Google Sheets
+5. Test the same search manually on YouTube.com to confirm videos exist

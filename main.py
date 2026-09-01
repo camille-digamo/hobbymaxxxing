@@ -1403,9 +1403,9 @@ What interests you? 🎯"""
                 await message.reply("❌ **No topics found!**\n\nAdd some topics first by saying something like:\n*\"I'm interested in guitar\"*")
                 return
 
-            # Create numbered list
+            # Create numbered list - show all topics
             topic_list = []
-            for i, (topic, parent_topic) in enumerate(existing_topics[:15]):  # Limit to 15 topics
+            for i, (topic, parent_topic) in enumerate(existing_topics):
                 topic_list.append(f"**{i+1}.** {topic} *({parent_topic})*")
 
             # Add surprise option
@@ -1522,14 +1522,20 @@ What interests you? 🎯"""
             all_videos = search_youtube(topic, parent_topic)
 
             if not all_videos:
-                await message.reply(f"❌ **No videos found for '{topic}'**")
+                await message.reply(f"❌ **No videos found for '{topic}'**\n\n🎯 Let me suggest some related topics you could explore instead...")
+
+                # Trigger topic expansion when no videos found
+                await self.ask_for_topic_expansion(message.channel, topic, parent_topic)
                 return
 
             # Filter watched videos
             available_videos = filter_available_videos(all_videos, watched_videos)
 
             if not available_videos:
-                await message.reply(f"🎉 **You've watched all videos for '{topic}'!**\n\nTry another topic.")
+                await message.reply(f"🎉 **You've watched all videos for '{topic}'!**\n\n🎯 Let me suggest some related topics to explore next...")
+
+                # Trigger topic expansion when all videos watched
+                await self.ask_for_topic_expansion(message.channel, topic, parent_topic)
                 return
 
             # Get Claude recommendation

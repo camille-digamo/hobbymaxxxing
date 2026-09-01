@@ -1176,7 +1176,8 @@ What interests you? 🎯"""
             print(f"🎯 ORGANIC INTEREST DETECTED! Topic: '{extracted_topic}'")
 
             # Get existing topics from Google Sheets for intersection analysis
-            existing_topics = self.get_existing_topics()
+            existing_topic_tuples = self.get_existing_topics()
+            existing_topics = [topic for topic, _ in existing_topic_tuples]  # Extract just topic names
 
             # Start topic exploration flow
             await self.start_topic_exploration(channel, extracted_topic, existing_topics)
@@ -1186,15 +1187,20 @@ What interests you? 🎯"""
             print(f"❌ Error detecting topic interest: {e}")
             return False
 
-    def get_existing_topics(self) -> List[str]:
-        """Get all existing topics from Google Sheets."""
+    def get_existing_topics(self) -> List[Tuple[str, str]]:
+        """Get all existing topics from Google Sheets as (topic, parent_topic) tuples."""
         try:
             client = get_google_sheets_client()
             sheet = client.open_by_key(GOOGLE_SHEETS_ID)
             topics_worksheet = sheet.worksheet('topics')
 
             records = topics_worksheet.get_all_records()
-            topics = [record.get('topic', '').strip() for record in records if record.get('topic')]
+            topics = []
+            for record in records:
+                topic = record.get('topic', '').strip()
+                parent_topic = record.get('parent_topic', '').strip()
+                if topic:
+                    topics.append((topic, parent_topic))
 
             print(f"📊 Retrieved {len(topics)} existing topics for intersection analysis")
             return topics

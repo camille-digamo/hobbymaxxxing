@@ -84,6 +84,8 @@ def detect_video_request_pattern(message_content: str) -> bool:
     request_patterns = [
         r"can you recommend me something",
         r"can you send me a video",
+        r"can you pick a video for me",
+        r"can you pick something for me",
         r"i need something to watch",
         r"recommend something",
         r"send me something",
@@ -92,6 +94,7 @@ def detect_video_request_pattern(message_content: str) -> bool:
         r"give me a video",
         r"show me something",
         r"pick something for me",
+        r"pick a video",
         r"surprise me",
         r"recommend a video",
         r"i want to learn",

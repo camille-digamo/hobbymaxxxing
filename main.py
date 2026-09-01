@@ -867,47 +867,8 @@ class HobbyMaxxingBot:
         print(f"🧠 Generating related topics for: {original_topic}")
 
         try:
-            client = Anthropic(api_key=ANTHROPIC_API_KEY)
-
-            context = f"Topic: '{original_topic}'"
-            if parent_topic:
-                context += f" (Parent: '{parent_topic}')"
-
-            prompt = f"""The user has exhausted all new videos for this topic: {context}
-
-Suggest 5-6 related topics they could explore next to expand their learning. These should be:
-- Related to but distinct from the original topic
-- Specific enough to find good YouTube videos
-- Progressive difficulty levels (some easier, some harder)
-- Different angles or subtopics within the same domain
-
-Return as a simple numbered list, one topic per line:
-1. [topic name]
-2. [topic name]
-etc.
-
-No explanations, just the numbered list."""
-
-            response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=200,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            # Parse the response to extract topics
-            response_text = response.content[0].text.strip()
-            topics = []
-
-            for line in response_text.split('\n'):
-                line = line.strip()
-                if line and (line[0].isdigit() or line.startswith('-')):
-                    # Extract topic after number/bullet
-                    topic = line.split('.', 1)[-1].split('-', 1)[-1].strip()
-                    if topic and len(topic) > 3:  # Basic validation
-                        topics.append(topic)
-
-            print(f"✅ Generated {len(topics)} related topics")
-            return topics[:6]  # Limit to 6 topics
+            # Use the robust topic expansion function from claude_service
+            return generate_topic_expansion(original_topic, parent_topic)
 
         except Exception as e:
             print(f"❌ Error generating related topics: {e}")

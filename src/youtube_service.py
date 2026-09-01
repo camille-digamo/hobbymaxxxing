@@ -2,30 +2,29 @@
 YouTube API integration for video search and management
 """
 
+from typing import List, Dict, Any
+from .utils import YOUTUBE_API_KEY
+
 # Robust import handling for Railway deployment
+YOUTUBE_API_AVAILABLE = False
+build = None
+
 try:
     from googleapiclient.discovery import build
     YOUTUBE_API_AVAILABLE = True
+    print("✅ YouTube API client loaded successfully")
 except ImportError as e:
-    print(f"⚠️  Warning: Google API client not available: {e}")
+    print(f"⚠️  YouTube API client not available: {e}")
     YOUTUBE_API_AVAILABLE = False
     build = None
-
-from typing import List, Dict, Any
-from .utils import YOUTUBE_API_KEY
+except Exception as e:
+    print(f"⚠️  Error loading YouTube API client: {e}")
+    YOUTUBE_API_AVAILABLE = False
+    build = None
 
 
 def search_youtube(topic: str, parent_topic: str = "", max_results: int = 8) -> List[Dict[str, Any]]:
     """Search YouTube for videos on the given topic."""
-    # Check if YouTube API is available
-    if not YOUTUBE_API_AVAILABLE or not build:
-        print("❌ YouTube API client not available (missing google-api-python-client)")
-        return []
-
-    if not YOUTUBE_API_KEY:
-        print("❌ YouTube API key not configured")
-        return []
-
     # Enhance search query with parent topic for better targeting
     search_query = topic
 
@@ -35,8 +34,33 @@ def search_youtube(topic: str, parent_topic: str = "", max_results: int = 8) -> 
 
     print(f"🔍 Searching YouTube for: '{search_query}'...")
 
+    # Comprehensive availability checks
+    print(f"🔧 Debug: YOUTUBE_API_AVAILABLE={YOUTUBE_API_AVAILABLE}")
+    print(f"🔧 Debug: build function={build}")
+    print(f"🔧 Debug: API key available={'Yes' if YOUTUBE_API_KEY else 'No'}")
+
+    if not YOUTUBE_API_AVAILABLE:
+        print("❌ YouTube API not available - returning empty list")
+        return []
+
+    if not YOUTUBE_API_KEY:
+        print("❌ YouTube API key not configured")
+        return []
+
+    # Wrap the entire API call in comprehensive error handling
     try:
+        # Check if build function is available and callable
+        if build is None:
+            print("❌ YouTube API build function is None")
+            return []
+
+        if not callable(build):
+            print("❌ YouTube API build function is not callable")
+            return []
+
+        print("🔧 Debug: About to call build() function")
         youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+        print("🔧 Debug: build() call successful")
 
         # Search for videos
         search_response = youtube.search().list(
@@ -62,6 +86,10 @@ def search_youtube(topic: str, parent_topic: str = "", max_results: int = 8) -> 
         print(f"✅ Found {len(videos)} video results")
         return videos
 
+    except NameError as e:
+        print(f"❌ YouTube search NameError (missing import): {e}")
+        print("This indicates missing google-api-python-client package on Railway")
+        return []
     except Exception as e:
         print(f"❌ YouTube search error: {e}")
         return []

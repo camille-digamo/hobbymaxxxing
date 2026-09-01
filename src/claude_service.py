@@ -2,28 +2,40 @@
 Anthropic Claude AI integration for video recommendations and topic analysis
 """
 
-# Robust import handling for Railway deployment
-try:
-    from anthropic import Anthropic
-    ANTHROPIC_API_AVAILABLE = True
-except ImportError as e:
-    print(f"⚠️  Warning: Anthropic API client not available: {e}")
-    ANTHROPIC_API_AVAILABLE = False
-    Anthropic = None
-
 from typing import List, Dict, Any
 import json
 import re
 from .utils import ANTHROPIC_API_KEY
+
+# Robust import handling for Railway deployment
+ANTHROPIC_API_AVAILABLE = False
+Anthropic = None
+
+try:
+    from anthropic import Anthropic
+    ANTHROPIC_API_AVAILABLE = True
+    print("✅ Anthropic API client loaded successfully")
+except ImportError as e:
+    print(f"⚠️  Anthropic API client not available: {e}")
+    ANTHROPIC_API_AVAILABLE = False
+    Anthropic = None
+except Exception as e:
+    print(f"⚠️  Error loading Anthropic API client: {e}")
+    ANTHROPIC_API_AVAILABLE = False
+    Anthropic = None
 
 
 def get_claude_recommendation(videos: List[Dict[str, Any]], topic: str, feedback_history: Dict[str, Any]) -> Dict[str, str]:
     """Ask Claude to pick the best video and write a blurb."""
     print("🤖 Asking Claude to pick the best video...")
 
-    # Check if Anthropic API is available
-    if not ANTHROPIC_API_AVAILABLE or not Anthropic:
-        print("❌ Anthropic API client not available, using fallback recommendation")
+    # Comprehensive availability checks
+    print(f"🔧 Debug: ANTHROPIC_API_AVAILABLE={ANTHROPIC_API_AVAILABLE}")
+    print(f"🔧 Debug: Anthropic class={Anthropic}")
+    print(f"🔧 Debug: API key available={'Yes' if ANTHROPIC_API_KEY else 'No'}")
+
+    if not ANTHROPIC_API_AVAILABLE:
+        print("❌ Anthropic API not available - using fallback recommendation")
         return {
             "video_id": videos[0]["video_id"] if videos else "unknown",
             "blurb": f"A great video to help you learn more about {topic}!"
@@ -37,7 +49,24 @@ def get_claude_recommendation(videos: List[Dict[str, Any]], topic: str, feedback
         }
 
     try:
+        # Check if Anthropic class is available and callable
+        if Anthropic is None:
+            print("❌ Anthropic class is None")
+            return {
+                "video_id": videos[0]["video_id"] if videos else "unknown",
+                "blurb": f"A great video to help you learn more about {topic}!"
+            }
+
+        if not callable(Anthropic):
+            print("❌ Anthropic class is not callable")
+            return {
+                "video_id": videos[0]["video_id"] if videos else "unknown",
+                "blurb": f"A great video to help you learn more about {topic}!"
+            }
+
+        print("🔧 Debug: About to create Anthropic client")
         client = Anthropic(api_key=ANTHROPIC_API_KEY)
+        print("🔧 Debug: Anthropic client created successfully")
 
         # Build video list for Claude
         video_list = ""
@@ -108,6 +137,15 @@ Your response must be valid JSON only, no other text."""
             }
             return fallback
 
+    except NameError as e:
+        print(f"❌ Claude recommendation NameError (missing import): {e}")
+        print("This indicates missing anthropic package on Railway")
+        # Fallback to first video
+        fallback = {
+            "video_id": videos[0]["video_id"] if videos else "unknown",
+            "blurb": f"A great video to help you learn more about {topic}!"
+        }
+        return fallback
     except Exception as e:
         print(f"❌ Error getting Claude recommendation: {e}")
         # Fallback to first video
@@ -235,6 +273,16 @@ No explanations, just the numbered list."""
 
         return topics[:8]  # Limit to 8 topics
 
+    except NameError as e:
+        print(f"❌ Topic expansion NameError (missing import): {e}")
+        print("This indicates missing anthropic package on Railway")
+        return [
+            f"advanced {original_topic}",
+            f"beginner {original_topic}",
+            f"{original_topic} techniques",
+            f"{original_topic} tips",
+            f"{original_topic} basics"
+        ]
     except Exception as e:
         print(f"❌ Error generating topic expansion: {e}")
         return [original_topic]  # Fallback to original topic

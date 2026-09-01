@@ -990,13 +990,13 @@ What interests you? 🎯"""
 
             # If no numbers found, treat as topic names
             if not selected_topics:
-                # Try to match partial text to suggested topics
+                # First try exact matches with suggested topics
                 for suggested in suggested_topics:
-                    if any(word in suggested.lower() for word in user_input.split() if len(word) > 2):
-                        if suggested not in selected_topics:
-                            selected_topics.append(suggested)
+                    if user_input == suggested.lower():
+                        selected_topics.append(suggested)
+                        break
 
-                # If still no matches, treat the whole input as a custom topic
+                # If no exact match found, treat as custom topic
                 if not selected_topics and len(user_input) > 3:
                     selected_topics.append(user_response.strip())
 

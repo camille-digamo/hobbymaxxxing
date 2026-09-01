@@ -124,6 +124,7 @@ DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID")) if os.getenv("DISCORD_
 DISCORD_USER_ID = int(os.getenv("DISCORD_USER_ID")) if os.getenv("DISCORD_USER_ID") else None
 GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
 GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
+GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
 
 # Constants
 DATE_FORMAT = '%Y/%m/%d'
@@ -151,16 +152,16 @@ def validate_environment():
         missing.append("DISCORD_USER_ID")
     if not GOOGLE_SHEETS_ID:
         missing.append("GOOGLE_SHEETS_ID")
-    if not GOOGLE_SERVICE_ACCOUNT_FILE:
-        missing.append("GOOGLE_SERVICE_ACCOUNT_FILE")
+    if not GOOGLE_SERVICE_ACCOUNT_FILE and not GOOGLE_SERVICE_ACCOUNT_JSON:
+        missing.append("GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT_JSON")
 
     if missing:
         print(f"❌ Missing required environment variables: {', '.join(missing)}")
         print("Please check your .env file and compare with .env.example")
         sys.exit(1)
 
-    # Check if service account file exists
-    if not os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
+    # Check if service account file exists (if using file method)
+    if GOOGLE_SERVICE_ACCOUNT_FILE and not os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
         print(f"❌ Google service account file not found: {GOOGLE_SERVICE_ACCOUNT_FILE}")
         sys.exit(1)
 
@@ -170,8 +171,17 @@ def get_google_sheets_client():
         # Define the scope for Google Sheets API
         scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 
-        # Load credentials from service account file
-        creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scope)
+        # Load credentials from service account file or JSON content
+        if GOOGLE_SERVICE_ACCOUNT_FILE:
+            # Use file path method (local development)
+            creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scope)
+        elif GOOGLE_SERVICE_ACCOUNT_JSON:
+            # Use JSON content method (GitHub Actions, Railway)
+            import json
+            service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+            creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
+        else:
+            raise ValueError("No Google service account credentials found")
 
         # Create gspread client
         client = gspread.authorize(creds)

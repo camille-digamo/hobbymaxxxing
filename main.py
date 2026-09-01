@@ -1,104 +1,4 @@
 #!/usr/bin/env python3
-"""
-🎯 YouTube Hobby Maxxxer MVP
-=========================================
-An AI-powered Discord bot that intelligently recommends YouTube videos for your hobbies!
-
-🚀 GETTING STARTED (First Time Setup)
-=====================================
-
-📋 STEP 1: Set Up Your APIs (Required)
---------------------------------------
-You need 4 API keys to make this work. Follow these guides step-by-step:
-
-1. 📺 YouTube Data API: docs/api-setup/youtube-api-setup.md
-   - Get your YouTube API key for video search
-
-2. 📊 Google Sheets API: docs/api-setup/google-sheets-setup.md
-   - Set up Google Sheets for topic/video tracking
-   - Create service account and download JSON file
-
-3. 🤖 Discord Bot: docs/api-setup/discord-bot-setup.md
-   - Create Discord bot and get your channel/user IDs
-
-4. 🧠 Anthropic API: docs/api-setup/anthropic-api-setup.md
-   - Get Claude AI API key for recommendations (~$1-3/month)
-
-📝 STEP 2: Configure Environment
--------------------------------
-1. Copy .env.example to .env:
-   Linux/Mac: cp .env.example .env
-   Windows:   copy .env.example .env
-
-2. Edit .env and add your API keys (see .env.example for details)
-
-3. Move your Google service account JSON to auth/ folder
-
-🚀 STEP 3: Choose Your Deployment
----------------------------------
-Pick ONE deployment method that works for you:
-
-💻 LOCAL (FREE) - docs/deployment/local-setup.md
-   - Run on your computer/server
-   - Perfect if you have a computer that stays on
-   - Zero monthly cost after setup
-
-🏠 RASPBERRY PI (FREE) - docs/deployment/raspberry-pi-setup.md
-   - Dedicated always-on device (~$35 one-time cost)
-   - Perfect for makers and tinkerers
-   - Zero monthly cost after setup
-
-☁️ GITHUB + RAILWAY ($0-3/month) - docs/deployment/github-actions-railway.md
-   - Perfect for non-technical friends
-   - GitHub Actions = FREE daily videos
-   - Railway = ~$0-3/month for reactions/feedback
-
-🛠️ STEP 4: Test Everything
---------------------------
-Run these commands to test your setup:
-
-1. Test your configuration:
-   python main.py --help
-
-2. Test a single video recommendation:
-   python main.py --daily-job
-
-3. Test persistent listening (Ctrl+C to stop):
-   python main.py --listen
-
-❌ HAVING ISSUES?
-=================
-Check: docs/troubleshooting/common-issues.md
-
-Common fixes:
-- Make sure all API keys are in your .env file
-- Check that your Discord bot has proper permissions
-- Verify your Google Sheets is shared with the service account
-- Run the diagnostic scripts in the troubleshooting guide
-
-📱 USAGE MODES
-==============
-This bot has 4 different modes depending on how you want to run it:
-
-• python main.py                 → Single run: post video, wait for notes, exit
-• python main.py --daily-job     → Daily mode: post video and exit (for cron/scheduled tasks)
-• python main.py --listen        → Listener mode: persistent bot for reactions/feedback
-• python main.py --github-daily-job  → GitHub Actions mode (cloud scheduled daily videos)
-• python main.py --railway-listener  → Railway mode (cloud persistent listener)
-
-💡 HOW IT WORKS
-===============
-1. 🔍 Analyzes your interests from Google Sheets
-2. 🎯 Finds YouTube videos matching your current focus
-3. 🤖 Claude AI picks the best video with personalized reasoning
-4. 📤 Posts to Discord with reaction buttons for feedback
-5. 💭 Learns from your reactions to improve future recommendations
-6. 📝 Collects your notes and insights for each video
-7. 🌱 Discovers new topic interests from your natural conversations
-
-🎉 Ready to start your hobby journey? Follow the setup guides above!
-"""
-
 import json
 import os
 import sys
@@ -107,63 +7,45 @@ import asyncio
 from datetime import datetime
 
 import discord
-from anthropic import Anthropic
-from googleapiclient.discovery import build
 from dotenv import load_dotenv
-import gspread
-from google.oauth2.service_account import Credentials
 
-# Load environment variables
-load_dotenv()
+# Import from our modular services
+from src.utils import validate_environment
+from src.youtube_service import search_youtube, filter_available_videos
+from src.claude_service import get_claude_recommendation, analyze_topic_interest, generate_topic_expansion
+from src.sheets_service import (
+    get_next_topic,
+    get_watched_videos,
+    get_feedback_history,
+    record_video_recommendation,
+    update_video_feedback,
+    update_video_notes
+)
+from src.discord_service import (
+    create_video_embed,
+    extract_video_info_from_embed,
+    detect_video_request_pattern,
+    add_feedback_reactions,
+    get_feedback_from_reaction,
+    extract_notes_from_reply
+)
+from src.bot import HobbyMaxxingBot
 
-# Configuration
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID")) if os.getenv("DISCORD_CHANNEL_ID") else None
-DISCORD_USER_ID = int(os.getenv("DISCORD_USER_ID")) if os.getenv("DISCORD_USER_ID") else None
-GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
-GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+# Import environment variables and constants from utils
+from src.utils import (
+    YOUTUBE_API_KEY,
+    ANTHROPIC_API_KEY,
+    DISCORD_BOT_TOKEN,
+    DISCORD_CHANNEL_ID,
+    DISCORD_USER_ID,
+    GOOGLE_SHEETS_ID,
+    DATE_FORMAT,
+    FEEDBACK_EMOJIS
+)
 
-# Constants
-DATE_FORMAT = '%Y/%m/%d'
+# Constants now imported from utils
 
-# Constants
-FEEDBACK_EMOJIS = {
-    '👍': 'liked',
-    '👎': 'didn\'t_like',
-    '❤️': 'loved',
-    '💤': 'boring'
-}
-
-def validate_environment():
-    """Check that all required environment variables are set."""
-    missing = []
-    if not YOUTUBE_API_KEY:
-        missing.append("YOUTUBE_API_KEY")
-    if not ANTHROPIC_API_KEY:
-        missing.append("ANTHROPIC_API_KEY")
-    if not DISCORD_BOT_TOKEN:
-        missing.append("DISCORD_BOT_TOKEN")
-    if not DISCORD_CHANNEL_ID:
-        missing.append("DISCORD_CHANNEL_ID")
-    if not DISCORD_USER_ID:
-        missing.append("DISCORD_USER_ID")
-    if not GOOGLE_SHEETS_ID:
-        missing.append("GOOGLE_SHEETS_ID")
-    if not GOOGLE_SERVICE_ACCOUNT_FILE and not GOOGLE_SERVICE_ACCOUNT_JSON:
-        missing.append("GOOGLE_SERVICE_ACCOUNT_FILE or GOOGLE_SERVICE_ACCOUNT_JSON")
-
-    if missing:
-        print(f"❌ Missing required environment variables: {', '.join(missing)}")
-        print("Please check your .env file and compare with .env.example")
-        sys.exit(1)
-
-    # Check if service account file exists (if using file method)
-    if GOOGLE_SERVICE_ACCOUNT_FILE and not os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
-        print(f"❌ Google service account file not found: {GOOGLE_SERVICE_ACCOUNT_FILE}")
-        sys.exit(1)
+# validate_environment function now available from src.utils
 
 def get_google_sheets_client():
     """Initialize and return Google Sheets client."""
@@ -972,49 +854,26 @@ class HobbyMaxxingBot:
             print(f"❌ Error asking for notes: {e}")
 
     def generate_reflection_question(self, topic: str, video_title: str) -> str:
-        """Generate a thoughtful reflection question based on the topic."""
-        # Common hobby/topic patterns and their questions
-        hobby_questions = {
-            'guitar': [
-                f"What's one technique from '{video_title}' that you'll practice this week?",
-                f"How will this change your approach to playing guitar?",
-                f"What inspired you most about this guitar lesson?"
-            ],
-            'surf': [
-                f"What's one thing from '{video_title}' that you'll try on your next surf session?",
-                f"How does this change your understanding of surfing?",
-                f"What wave conditions would be perfect to practice this?"
-            ],
-            'cooking': [
-                f"What's one technique from '{video_title}' you want to try in your kitchen?",
-                f"How will this recipe inspire your next cooking adventure?",
-                f"What ingredient or method surprised you most?"
-            ],
-            'photography': [
-                f"What composition or technique from '{video_title}' will you experiment with?",
-                f"How does this change your perspective on photography?",
-                f"What shot are you inspired to capture now?"
-            ]
-        }
+        """Generate a universal reflection question that works for any topic."""
+        import random
 
-        # Try to match topic to hobby patterns
-        topic_lower = topic.lower()
-        for hobby, questions in hobby_questions.items():
-            if hobby in topic_lower:
-                import random
-                return random.choice(questions)
-
-        # Generic fallback questions
-        generic_questions = [
-            f"What's something cool you learned from '{video_title}' that you'll take with you?",
-            f"How does '{video_title}' inspire you to level up your {topic} skills?",
-            f"What's one thing from this video that you want to try or remember?",
+        # Universal reflection questions that work for any learning topic
+        universal_questions = [
+            f"How does this change your understanding of {topic}?",
+            f"What's one thing from '{video_title}' that you'll remember?",
+            f"What are your thoughts on the video?",
             f"What was your biggest takeaway from '{video_title}'?",
-            f"How will this video change your approach to {topic}?"
+            f"What surprised you most about this {topic} video?",
+            f"How will this video influence your approach to {topic}?",
+            f"What's one insight from '{video_title}' that stuck with you?",
+            f"What questions did this video raise for you about {topic}?",
+            f"What would you like to explore more after watching '{video_title}'?",
+            f"How did this video expand your perspective on {topic}?",
+            f"What's something from '{video_title}' you want to try or apply?",
+            f"What resonated with you most in this video?"
         ]
 
-        import random
-        return random.choice(generic_questions)
+        return random.choice(universal_questions)
 
     def generate_related_topics(self, original_topic: str, parent_topic: str = '') -> List[str]:
         """Use Claude to generate related topic suggestions."""

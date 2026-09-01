@@ -64,14 +64,14 @@ def main():
     print("🧪 MODULE CHECK")
     print("-" * 40)
 
-    # Check our custom modules
+    # Check our main module
     custom_modules = [
-        ("Utils", "from src.utils import YOUTUBE_API_KEY"),
-        ("YouTube Service", "from src.youtube_service import search_youtube"),
-        ("Claude Service", "from src.claude_service import get_claude_recommendation"),
-        ("Sheets Service", "from src.sheets_service import get_google_sheets_client"),
-        ("Discord Service", "from src.discord_service import detect_video_request_pattern"),
-        ("Bot Class", "from src.bot import HobbyMaxxingBot"),
+        ("Main Module", "import main"),
+        ("YouTube Service", "from main import search_youtube"),
+        ("Claude Service", "from main import get_claude_recommendation"),
+        ("Sheets Service", "from main import get_google_sheets_client"),
+        ("Discord Service", "from main import detect_video_request_pattern"),
+        ("Bot Class", "from main import HobbyMaxxingBot"),
     ]
 
     module_success = 0

@@ -4,328 +4,51 @@ import os
 import sys
 from typing import List, Dict, Any, Optional, Tuple
 import asyncio
-from datetime import datetime, timedelta
-import re
-import random
+from datetime import datetime
 
 import discord
-from anthropic import Anthropic
-from googleapiclient.discovery import build
 from dotenv import load_dotenv
-import gspread
-from google.oauth2.service_account import Credentials
 
-# Load environment variables
-load_dotenv()
+# Import from our modular services
+from src.utils import validate_environment
+from src.youtube_service import search_youtube, filter_available_videos
+from src.claude_service import get_claude_recommendation, analyze_topic_interest, generate_topic_expansion
+from src.sheets_service import (
+    get_google_sheets_client,
+    get_next_topic,
+    get_watched_videos,
+    get_feedback_history,
+    record_video_recommendation,
+    update_video_feedback,
+    update_video_notes
+)
+from src.discord_service import (
+    create_video_embed,
+    extract_video_info_from_embed,
+    detect_video_request_pattern,
+    add_feedback_reactions,
+    get_feedback_from_reaction,
+    extract_notes_from_reply
+)
+from src.bot import HobbyMaxxingBot
 
-# Environment variables
-YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-DISCORD_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID")) if os.getenv("DISCORD_CHANNEL_ID") else None
-DISCORD_USER_ID = int(os.getenv("DISCORD_USER_ID")) if os.getenv("DISCORD_USER_ID") else None
-GOOGLE_SHEETS_ID = os.getenv("GOOGLE_SHEETS_ID")
-GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+# Import environment variables and constants from utils
+from src.utils import (
+    YOUTUBE_API_KEY,
+    ANTHROPIC_API_KEY,
+    DISCORD_BOT_TOKEN,
+    DISCORD_CHANNEL_ID,
+    DISCORD_USER_ID,
+    GOOGLE_SHEETS_ID,
+    DATE_FORMAT,
+    FEEDBACK_EMOJIS
+)
 
-# Constants
-DATE_FORMAT = '%Y/%m/%d'
-FEEDBACK_EMOJIS = {
-    '👍': 'liked',
-    '👎': 'didn\'t_like',
-    '❤️': 'loved',
-    '💤': 'boring'
-}
+# Constants now imported from utils
 
-def validate_environment():
-    """Check that all required environment variables are set."""
-    missing = []
+# validate_environment function now available from src.utils
 
-    if not YOUTUBE_API_KEY:
-        missing.append("YOUTUBE_API_KEY")
-    if not ANTHROPIC_API_KEY:
-        missing.append("ANTHROPIC_API_KEY")
-    if not DISCORD_BOT_TOKEN:
-        missing.append("DISCORD_BOT_TOKEN")
-    if not DISCORD_CHANNEL_ID:
-        missing.append("DISCORD_CHANNEL_ID")
-    if not DISCORD_USER_ID:
-        missing.append("DISCORD_USER_ID")
-    if not GOOGLE_SHEETS_ID:
-        missing.append("GOOGLE_SHEETS_ID")
-
-    # Check Google service account credentials
-    has_file = GOOGLE_SERVICE_ACCOUNT_FILE and os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE)
-    has_json = GOOGLE_SERVICE_ACCOUNT_JSON
-    if not has_file and not has_json:
-        missing.append("GOOGLE_SERVICE_ACCOUNT_FILE (with existing file) or GOOGLE_SERVICE_ACCOUNT_JSON")
-
-    if missing:
-        error_msg = f"❌ Missing required environment variables: {', '.join(missing)}"
-        print(error_msg)
-        print("Please check your .env file and compare with .env.example")
-        raise ValueError(f"Missing environment variables: {', '.join(missing)}")
-
-def get_current_date():
-    """Get current date in the standard format."""
-    return datetime.now().strftime(DATE_FORMAT)
-
-def get_google_sheets_client():
-    """Initialize and return Google Sheets client with dual credential support."""
-    try:
-        # Define the scope for Google Sheets API
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-
-        # Load credentials from service account file or JSON content
-        if GOOGLE_SERVICE_ACCOUNT_FILE and os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
-            # Use file path method (local development)
-            print(f"🔑 Using Google service account file: {GOOGLE_SERVICE_ACCOUNT_FILE}")
-            creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scope)
-        elif GOOGLE_SERVICE_ACCOUNT_JSON:
-            # Use JSON content method (GitHub Actions, Railway)
-            print("🔑 Using Google service account JSON content")
-            service_account_info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-            creds = Credentials.from_service_account_info(service_account_info, scopes=scope)
-        else:
-            raise ValueError("No Google service account credentials found - need either GOOGLE_SERVICE_ACCOUNT_FILE (with existing file) or GOOGLE_SERVICE_ACCOUNT_JSON")
-
-        # Create gspread client
-        client = gspread.authorize(creds)
-        return client
-    except Exception as e:
-        print(f"❌ Failed to initialize Google Sheets client: {e}")
-        print("⚠️  Google Sheets operations will not work until this is resolved")
-        raise  # Re-raise the exception instead of exiting
-
-def search_youtube(topic: str, parent_topic: str = "", max_results: int = 8) -> List[Dict[str, Any]]:
-    """Search YouTube for videos on the given topic with enhanced search targeting."""
-    # Enhance search query with parent topic for better targeting
-    search_query = topic
-
-    if parent_topic and parent_topic.lower() not in topic.lower():
-        # Add parent topic to make search more specific
-        search_query = f"{topic} {parent_topic}"
-
-    print(f"🔍 Searching YouTube for: '{search_query}'...")
-
-    if not YOUTUBE_API_KEY:
-        print("❌ YouTube API key not configured")
-        return []
-
-    try:
-        youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-
-        # Search for videos
-        search_response = youtube.search().list(
-            q=search_query,
-            part="snippet",
-            type="video",
-            maxResults=max_results,
-            order="relevance"
-        ).execute()
-
-        videos = []
-        for item in search_response["items"]:
-            video = {
-                "video_id": item["id"]["videoId"],
-                "title": item["snippet"]["title"],
-                "channel_title": item["snippet"]["channelTitle"],
-                "description": item["snippet"]["description"],
-                "thumbnail_url": item["snippet"]["thumbnails"]["high"]["url"],
-                "video_url": f"https://www.youtube.com/watch?v={item['id']['videoId']}"
-            }
-            videos.append(video)
-
-        print(f"✅ Found {len(videos)} video results")
-        return videos
-
-    except Exception as e:
-        print(f"❌ YouTube search error: {e}")
-        print("🔄 Returning empty video list...")
-        return []
-
-def filter_available_videos(all_videos: List[Dict[str, Any]], watched_videos: List[str]) -> List[Dict[str, Any]]:
-    """Filter out videos that have already been watched."""
-    available_videos = []
-
-    for video in all_videos:
-        video_url = video["video_url"]
-
-        # Check against watched videos by URL
-        if video_url not in watched_videos:
-            available_videos.append(video)
-        else:
-            print(f"⏭️  Skipping already watched video: {video['title']}")
-
-    print(f"✅ {len(available_videos)} new videos available (filtered from {len(all_videos)} total)")
-    return available_videos
-
-# Google Sheets operations with enhanced error handling
-
-def get_watched_videos() -> List[str]:
-    """Get list of watched video URLs to avoid duplicates."""
-    print("📖 Reading existing videos from Google Sheets...")
-
-    try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
-
-        # Get all video records
-        videos_data = videos_worksheet.get_all_records()
-        watched_urls = []
-
-        for video_row in videos_data:
-            video_url = video_row.get('video_url', '')
-            if video_url:
-                watched_urls.append(video_url)
-
-        print(f"✅ Found {len(videos_data)} videos in history ({len([v for v in videos_data if v.get('date_watched')])} watched)")
-        return watched_urls
-
-    except Exception as e:
-        print(f"❌ Error reading watched videos: {e}")
-        return []
-
-def get_feedback_history() -> Dict[str, Any]:
-    """Get user feedback history for improving recommendations."""
-    print("🧠 Analyzing feedback history...")
-
-    try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
-
-        videos_data = videos_worksheet.get_all_records()
-
-        feedback_history = {
-            'liked_channels': [],
-            'disliked_channels': [],
-            'liked_keywords': [],
-            'disliked_keywords': [],
-            'total_feedback': 0
-        }
-
-        for video in videos_data:
-            rating = video.get('rating', '')
-            channel = video.get('channel', '')
-            title = video.get('video_title', '')
-
-            if rating and channel:
-                feedback_history['total_feedback'] += 1
-
-                if rating in ['liked', 'loved']:
-                    if channel not in feedback_history['liked_channels']:
-                        feedback_history['liked_channels'].append(channel)
-
-                    # Extract keywords from liked video titles
-                    title_words = title.lower().split()
-                    feedback_history['liked_keywords'].extend([w for w in title_words if len(w) > 4])
-
-                elif rating in ['didn\'t_like', 'boring']:
-                    if channel not in feedback_history['disliked_channels']:
-                        feedback_history['disliked_channels'].append(channel)
-
-                    # Extract keywords from disliked video titles
-                    title_words = title.lower().split()
-                    feedback_history['disliked_keywords'].extend([w for w in title_words if len(w) > 4])
-
-        # Remove duplicates and limit size
-        feedback_history['liked_keywords'] = list(set(feedback_history['liked_keywords']))[:20]
-        feedback_history['disliked_keywords'] = list(set(feedback_history['disliked_keywords']))[:20]
-
-        print(f"✅ Analyzed {feedback_history['total_feedback']} pieces of feedback")
-        return feedback_history
-
-    except Exception as e:
-        print(f"❌ Error analyzing feedback history: {e}")
-        return {'liked_channels': [], 'disliked_channels': [], 'liked_keywords': [], 'disliked_keywords': [], 'total_feedback': 0}
-
-def record_video_recommendation(video_title: str, channel: str, topic: str, parent_topic: str, video_id: str, topic_row: int):
-    """Record a video recommendation in Google Sheets."""
-    print("📝 Recording video recommendation...")
-
-    try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
-
-        today = get_current_date()
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
-
-        # Append new row with video info
-        videos_worksheet.append_row([
-            video_title,
-            channel,
-            video_url,
-            topic,
-            parent_topic,
-            today,  # date_recommended
-            '',     # date_watched (empty initially)
-            '',     # rating (empty initially)
-            ''      # notes (empty initially)
-        ])
-
-        print("✅ Recorded video recommendation in Google Sheets")
-
-    except Exception as e:
-        print(f"❌ Error writing to Google Sheets: {e}")
-        print("⚠️  Video recommendation not recorded, but continuing...")
-
-def update_video_feedback(video_url: str, feedback: str):
-    """Update video feedback in Google Sheets."""
-    print(f"📝 Recording feedback: {feedback}")
-
-    try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
-
-        # Get all records to find the right row
-        all_records = videos_worksheet.get_all_values()
-        today = get_current_date()
-
-        for i, row in enumerate(all_records[1:], start=2):  # Skip header, start at row 2
-            if len(row) >= 3 and row[2] == video_url:  # video_url is column C (index 2)
-                # Update rating (column H) and date_watched (column G)
-                videos_worksheet.update(f'G{i}', today)  # date_watched
-                videos_worksheet.update(f'H{i}', feedback)  # rating
-                print(f"✅ Updated feedback for video at row {i}")
-                return True
-
-        print(f"❌ Video URL not found in sheets: {video_url}")
-        return False
-
-    except Exception as e:
-        print(f"❌ Error updating video feedback: {e}")
-        return False
-
-def update_video_notes(video_url: str, notes: str):
-    """Update video notes in Google Sheets with workflow completion flag."""
-    print(f"📝 Recording notes: {notes[:50]}...")
-
-    try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
-
-        # Get all records to find the right row
-        all_records = videos_worksheet.get_all_values()
-
-        for i, row in enumerate(all_records[1:], start=2):  # Skip header, start at row 2
-            if len(row) >= 3 and row[2] == video_url:  # video_url is column C (index 2)
-                # Update notes (column I)
-                videos_worksheet.update(f'I{i}', notes)
-                print(f"✅ Updated notes for video at row {i}")
-                # Set workflow completion flag for graceful shutdown
-                return True
-
-        print(f"❌ Video URL not found in sheets: {video_url}")
-        return False
-
-    except Exception as e:
-        print(f"❌ Error updating video notes: {e}")
-        return False
+# get_google_sheets_client now available from src.sheets_service
 
 def calculate_topic_interest_scores() -> Dict[str, float]:
     """Calculate interest scores for topics based on recent ratings."""
@@ -494,98 +217,6 @@ def get_next_topic() -> Tuple[str, str, str]:
         print(f"❌ Error in smart topic selection: {e}")
         print("🔄 Falling back to default topic...")
         return "general learning", "", 2
-
-# Claude AI integration functions
-
-def get_claude_recommendation(videos: List[Dict[str, Any]], topic: str, feedback_history: Dict[str, Any]) -> Dict[str, str]:
-    """Ask Claude to pick the best video and write a blurb."""
-    print("🤖 Asking Claude to pick the best video...")
-
-    if not ANTHROPIC_API_KEY:
-        print("❌ Anthropic API key not configured, using fallback recommendation")
-        return {
-            "video_id": videos[0]["video_id"] if videos else "unknown",
-            "blurb": f"A great video to help you learn more about {topic}!"
-        }
-
-    try:
-        client = Anthropic(api_key=ANTHROPIC_API_KEY)
-
-        # Build video list for Claude
-        video_list = ""
-        for i, video in enumerate(videos, 1):
-            video_list += f"{i}. \"{video['title']}\" by {video['channel_title']}\n   Description: {video['description'][:150]}...\n\n"
-
-        # Build feedback context
-        feedback_context = ""
-        if feedback_history['total_feedback'] > 0:
-            liked_channels = feedback_history.get('liked_channels', [])
-            disliked_channels = feedback_history.get('disliked_channels', [])
-
-            if liked_channels:
-                feedback_context += f"You tend to enjoy videos from: {', '.join(liked_channels[:5])}\n"
-            if disliked_channels:
-                feedback_context += f"You tend to dislike videos from: {', '.join(disliked_channels[:3])}\n"
-
-        prompt = f"""You are helping someone learn about {topic}. Here are {len(videos)} YouTube videos to choose from:
-
-{video_list}
-
-{feedback_context}
-
-Pick the single best video for learning {topic} and explain why in an enthusiastic, personal way. Focus on what makes this video valuable for someone interested in {topic}.
-
-Your response must be valid JSON only, no other text:
-{{
-    "video_id": "the_youtube_video_id",
-    "blurb": "2-3 sentence explanation of why this video is perfect for learning {topic}"
-}}
-
-Make the blurb personal and exciting, using language typical of people who enjoy {topic} if the slang fits. Emphasize how the video can get them where they want to be in an aspirational and motivational way.
-Avoid generic phrases like "this video is great" or "you should watch this". Instead, focus on the unique value of the video and how it can help the viewer achieve their goals in {topic}.
-
-Your response must be valid JSON only, no other text."""
-
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",  # Claude Haiku 4.5
-            max_tokens=300,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        # Parse Claude's JSON response
-        response_text = response.content[0].text.strip()
-
-        # Extract JSON from markdown code blocks if present
-        if response_text.startswith('```json'):
-            # Find the JSON content between ```json and ```
-            start_marker = '```json'
-            end_marker = '```'
-
-            start_index = response_text.find(start_marker) + len(start_marker)
-            end_index = response_text.find(end_marker, start_index)
-
-            if end_index != -1:
-                response_text = response_text[start_index:end_index].strip()
-
-        try:
-            recommendation = json.loads(response_text)
-            print(f"✅ Claude picked video ID: {recommendation['video_id']}")
-            return recommendation
-        except json.JSONDecodeError:
-            print(f"❌ Error parsing Claude's response as JSON: {response_text}")
-            # Return fallback recommendation instead of crashing
-            return {
-                "video_id": videos[0]["video_id"],
-                "blurb": f"A great video to help you learn more about {topic}!"
-            }
-
-    except Exception as e:
-        print(f"❌ Error getting Claude recommendation: {e}")
-        # Return fallback recommendation instead of crashing
-        return {
-            "video_id": videos[0]["video_id"] if videos else "unknown",
-            "blurb": f"An interesting video about {topic} to check out!"
-        }
 
 def get_watched_videos() -> Dict[str, bool]:
     """Get a dict of video URLs that have been watched or are still pending."""
@@ -934,57 +565,6 @@ Your response must be valid JSON only, no other text."""
             "video_id": videos[0]["video_id"] if videos else "unknown",
             "blurb": f"An interesting video about {topic} to check out!"
         }
-
-# Essential improvements from modularization
-
-def detect_video_request_pattern(message_content: str) -> bool:
-    """Detect if a Discord message is requesting a video recommendation."""
-    content = message_content.lower().strip()
-
-    # Natural language patterns for video requests
-    request_patterns = [
-        r"can you recommend me something",
-        r"can you send me a video",
-        r"can you pick a video for me",
-        r"can you pick something for me",
-        r"i need something to watch",
-        r"recommend something",
-        r"send me something",
-        r"suggest a video",
-        r"what should i watch",
-        r"give me a video",
-        r"show me something",
-        r"pick something for me",
-        r"pick a video",
-        r"surprise me",
-        r"recommend a video",
-        r"i want to learn",
-        r"teach me about",
-        r"help me learn"
-    ]
-
-    return any(re.search(pattern, content) for pattern in request_patterns)
-
-def create_video_embed(video_title: str, channel: str, video_url: str, blurb: str, topic: str, parent_topic: str = "") -> discord.Embed:
-    """Create rich embed for video recommendations."""
-    # Create embed with video info
-    embed = discord.Embed(
-        title=video_title,
-        url=video_url,
-        description=blurb,
-        color=0x00ff00
-    )
-
-    # Add fields
-    embed.add_field(name="Channel", value=channel, inline=True)
-
-    topic_display = f"{topic} ({parent_topic})" if parent_topic else topic
-    embed.add_field(name="Topic", value=topic_display, inline=True)
-
-    # Footer with instructions
-    embed.set_footer(text="React with 👍👎❤️💤 to give feedback, or reply with notes!")
-
-    return embed
 
 class HobbyMaxxingBot:
     """Persistent Discord bot that handles video recommendations and feedback."""

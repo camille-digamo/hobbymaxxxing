@@ -13,8 +13,7 @@ import sys
 import os
 sys.path.append('.')
 
-from src.youtube_service import search_youtube
-from src.utils import YOUTUBE_API_KEY
+from main import search_youtube, YOUTUBE_API_KEY
 
 def debug_search(topic, parent_topic=None, max_results=8):
     """Debug YouTube search with detailed output."""

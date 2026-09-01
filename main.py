@@ -1200,8 +1200,11 @@ class HobbyMaxxingBot:
             await message.edit(embed=embed)
             print("✅ Rating recorded and message updated!")
 
-            # Ask for learning notes regardless of rating
-            await self.ask_for_notes(message.channel, video_url, topic, video_title)
+            # Ask for learning notes regardless of rating (but only once per video)
+            if not any(notes_req['video_url'] == video_url for notes_req in self.awaiting_notes.values()):
+                await self.ask_for_notes(message.channel, video_url, topic, video_title)
+            else:
+                print(f"📝 Already asked for notes on this video: {video_title}")
 
     def update_video_notes(self, video_url: str, notes: str):
         """Update the notes for a specific video in Google Sheets."""

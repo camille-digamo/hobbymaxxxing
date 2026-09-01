@@ -49,18 +49,18 @@ def search_youtube(topic: str, parent_topic: str = "", max_results: int = 8) -> 
 
     # Wrap the entire API call in comprehensive error handling
     try:
-        # Check if build function is available and callable
-        if build is None:
-            print("❌ YouTube API build function is None")
+        # Triple-check imports at runtime (Railway environment quirk)
+        try:
+            from googleapiclient.discovery import build as runtime_build
+            print("🔧 Debug: Runtime import of build() successful")
+            youtube = runtime_build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+            print("🔧 Debug: YouTube API client created successfully")
+        except ImportError as e:
+            print(f"❌ Runtime import failed: {e}")
             return []
-
-        if not callable(build):
-            print("❌ YouTube API build function is not callable")
+        except NameError as e:
+            print(f"❌ Runtime NameError: {e}")
             return []
-
-        print("🔧 Debug: About to call build() function")
-        youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-        print("🔧 Debug: build() call successful")
 
         # Search for videos
         search_response = youtube.search().list(

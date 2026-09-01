@@ -64,9 +64,24 @@ def get_claude_recommendation(videos: List[Dict[str, Any]], topic: str, feedback
                 "blurb": f"A great video to help you learn more about {topic}!"
             }
 
-        print("🔧 Debug: About to create Anthropic client")
-        client = Anthropic(api_key=ANTHROPIC_API_KEY)
-        print("🔧 Debug: Anthropic client created successfully")
+        # Triple-check imports at runtime (Railway environment quirk)
+        try:
+            from anthropic import Anthropic as runtime_Anthropic
+            print("🔧 Debug: Runtime import of Anthropic successful")
+            client = runtime_Anthropic(api_key=ANTHROPIC_API_KEY)
+            print("🔧 Debug: Anthropic client created successfully")
+        except ImportError as e:
+            print(f"❌ Runtime Anthropic import failed: {e}")
+            return {
+                "video_id": videos[0]["video_id"] if videos else "unknown",
+                "blurb": f"A great video to help you learn more about {topic}!"
+            }
+        except NameError as e:
+            print(f"❌ Runtime Anthropic NameError: {e}")
+            return {
+                "video_id": videos[0]["video_id"] if videos else "unknown",
+                "blurb": f"A great video to help you learn more about {topic}!"
+            }
 
         # Build video list for Claude
         video_list = ""
@@ -169,7 +184,30 @@ def analyze_topic_interest(raw_topic: str, existing_topics: List[str]) -> Dict[s
         }
 
     try:
-        client = Anthropic(api_key=ANTHROPIC_API_KEY)
+        # Triple-check imports at runtime (Railway environment quirk)
+        try:
+            from anthropic import Anthropic as runtime_Anthropic
+            print("🔧 Debug: Runtime import of Anthropic for topic analysis successful")
+            client = runtime_Anthropic(api_key=ANTHROPIC_API_KEY)
+            print("🔧 Debug: Anthropic client for topic analysis created successfully")
+        except ImportError as e:
+            print(f"❌ Runtime Anthropic import failed for topic analysis: {e}")
+            return {
+                "is_specific": True,
+                "suggested_parent": "general",
+                "specific_subtopics": [raw_topic],
+                "intersection_topics": [],
+                "beginner_friendly": [f"beginner {raw_topic}"]
+            }
+        except NameError as e:
+            print(f"❌ Runtime Anthropic NameError for topic analysis: {e}")
+            return {
+                "is_specific": True,
+                "suggested_parent": "general",
+                "specific_subtopics": [raw_topic],
+                "intersection_topics": [],
+                "beginner_friendly": [f"beginner {raw_topic}"]
+            }
 
         existing_topics_text = "\n".join([f"- {topic}" for topic in existing_topics[:20]])
 
@@ -235,7 +273,30 @@ def generate_topic_expansion(original_topic: str, parent_topic: str) -> List[str
         ]
 
     try:
-        client = Anthropic(api_key=ANTHROPIC_API_KEY)
+        # Triple-check imports at runtime (Railway environment quirk)
+        try:
+            from anthropic import Anthropic as runtime_Anthropic
+            print("🔧 Debug: Runtime import of Anthropic for topic expansion successful")
+            client = runtime_Anthropic(api_key=ANTHROPIC_API_KEY)
+            print("🔧 Debug: Anthropic client for topic expansion created successfully")
+        except ImportError as e:
+            print(f"❌ Runtime Anthropic import failed for topic expansion: {e}")
+            return [
+                f"advanced {original_topic}",
+                f"beginner {original_topic}",
+                f"{original_topic} techniques",
+                f"{original_topic} tips",
+                f"{original_topic} basics"
+            ]
+        except NameError as e:
+            print(f"❌ Runtime Anthropic NameError for topic expansion: {e}")
+            return [
+                f"advanced {original_topic}",
+                f"beginner {original_topic}",
+                f"{original_topic} techniques",
+                f"{original_topic} tips",
+                f"{original_topic} basics"
+            ]
 
         prompt = f"""The user wants to explore "{original_topic}" under the category "{parent_topic}".
 

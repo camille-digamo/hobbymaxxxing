@@ -6,6 +6,7 @@ import gspread
 import json
 import sys
 import os
+import time
 from google.oauth2.service_account import Credentials
 from typing import List, Tuple, Dict, Any
 from .utils import (
@@ -13,9 +14,18 @@ from .utils import (
     get_current_date
 )
 
+# Global client cache to avoid repeated authentication
+_sheets_client = None
+
 
 def get_google_sheets_client():
-    """Initialize and return Google Sheets client."""
+    """Initialize and return cached Google Sheets client."""
+    global _sheets_client
+
+    # Return cached client if available
+    if _sheets_client is not None:
+        return _sheets_client
+
     try:
         # Import credentials config only when needed to avoid module-level import issues
         from .utils import GOOGLE_SERVICE_ACCOUNT_FILE, GOOGLE_SERVICE_ACCOUNT_JSON
@@ -36,13 +46,34 @@ def get_google_sheets_client():
         else:
             raise ValueError("No Google service account credentials found - need either GOOGLE_SERVICE_ACCOUNT_FILE (with existing file) or GOOGLE_SERVICE_ACCOUNT_JSON")
 
-        # Create gspread client
-        client = gspread.authorize(creds)
+        # Create gspread client and cache it
+        _sheets_client = gspread.authorize(creds)
+        print("✅ Google Sheets client initialized and cached")
 
-        return client
+        return _sheets_client
     except Exception as e:
         print(f"❌ Failed to initialize Google Sheets client: {e}")
         sys.exit(1)
+
+
+def retry_on_quota_exceeded(func, max_retries=3):
+    """Retry function with exponential backoff on quota exceeded errors."""
+    for attempt in range(max_retries):
+        try:
+            return func()
+        except Exception as e:
+            if "429" in str(e) or "quota exceeded" in str(e).lower():
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 5  # 5, 10, 20 seconds
+                    print(f"⏱️  Rate limit hit, waiting {wait_time}s before retry {attempt + 2}/{max_retries}...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    print(f"❌ Max retries ({max_retries}) exceeded for rate limiting")
+                    raise
+            else:
+                # Not a rate limit error, re-raise immediately
+                raise
 
 
 def get_next_topic() -> Tuple[str, str, int]:
@@ -50,12 +81,14 @@ def get_next_topic() -> Tuple[str, str, int]:
     print("📊 Smart topic selection from Google Sheets...")
 
     try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        topics_worksheet = sheet.worksheet('topics')
+        def _get_topic_data():
+            client = get_google_sheets_client()
+            sheet = client.open_by_key(GOOGLE_SHEETS_ID)
+            topics_worksheet = sheet.worksheet('topics')
+            return topics_worksheet.get_all_records()
 
-        # Get all topics data
-        topics_data = topics_worksheet.get_all_records()
+        # Get all topics data with retry logic
+        topics_data = retry_on_quota_exceeded(_get_topic_data)
 
         if not topics_data:
             print("❌ No topics found in Google Sheets")
@@ -126,12 +159,14 @@ def get_watched_videos() -> List[str]:
     print("📖 Reading existing videos from Google Sheets...")
 
     try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
+        def _get_videos_data():
+            client = get_google_sheets_client()
+            sheet = client.open_by_key(GOOGLE_SHEETS_ID)
+            videos_worksheet = sheet.worksheet('videos')
+            return videos_worksheet.get_all_records()
 
-        # Get all video records
-        videos_data = videos_worksheet.get_all_records()
+        # Get all video records with retry logic
+        videos_data = retry_on_quota_exceeded(_get_videos_data)
         watched_urls = []
 
         for video_row in videos_data:
@@ -152,11 +187,13 @@ def get_feedback_history() -> Dict[str, Any]:
     print("🧠 Analyzing feedback history...")
 
     try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
+        def _get_feedback_data():
+            client = get_google_sheets_client()
+            sheet = client.open_by_key(GOOGLE_SHEETS_ID)
+            videos_worksheet = sheet.worksheet('videos')
+            return videos_worksheet.get_all_records()
 
-        videos_data = videos_worksheet.get_all_records()
+        videos_data = retry_on_quota_exceeded(_get_feedback_data)
 
         feedback_history = {
             'liked_channels': [],
@@ -207,25 +244,28 @@ def record_video_recommendation(video_title: str, channel: str, topic: str, pare
     print("📝 Recording video recommendation...")
 
     try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
+        def _record_video():
+            client = get_google_sheets_client()
+            sheet = client.open_by_key(GOOGLE_SHEETS_ID)
+            videos_worksheet = sheet.worksheet('videos')
 
-        today = get_current_date()
-        video_url = f"https://www.youtube.com/watch?v={video_id}"
+            today = get_current_date()
+            video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-        # Append new row with video info
-        videos_worksheet.append_row([
-            video_title,
-            channel,
-            video_url,
-            topic,
-            parent_topic,
-            today,  # date_recommended
-            '',     # date_watched (empty initially)
-            '',     # rating (empty initially)
-            ''      # notes (empty initially)
-        ])
+            # Append new row with video info
+            videos_worksheet.append_row([
+                video_title,
+                channel,
+                video_url,
+                topic,
+                parent_topic,
+                today,  # date_recommended
+                '',     # date_watched (empty initially)
+                '',     # rating (empty initially)
+                ''      # notes (empty initially)
+            ])
+
+        retry_on_quota_exceeded(_record_video)
 
         print("✅ Recorded video recommendation in Google Sheets")
 
@@ -239,24 +279,27 @@ def update_video_feedback(video_url: str, feedback: str):
     print(f"📝 Recording feedback: {feedback}")
 
     try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
+        def _update_feedback():
+            client = get_google_sheets_client()
+            sheet = client.open_by_key(GOOGLE_SHEETS_ID)
+            videos_worksheet = sheet.worksheet('videos')
 
-        # Get all records to find the right row
-        all_records = videos_worksheet.get_all_values()
-        today = get_current_date()
+            # Get all records to find the right row
+            all_records = videos_worksheet.get_all_values()
+            today = get_current_date()
 
-        for i, row in enumerate(all_records[1:], start=2):  # Skip header, start at row 2
-            if len(row) >= 3 and row[2] == video_url:  # video_url is column C (index 2)
-                # Update rating (column H) and date_watched (column G)
-                videos_worksheet.update(f'G{i}', today)  # date_watched
-                videos_worksheet.update(f'H{i}', feedback)  # rating
-                print(f"✅ Updated feedback for video at row {i}")
-                return True
+            for i, row in enumerate(all_records[1:], start=2):  # Skip header, start at row 2
+                if len(row) >= 3 and row[2] == video_url:  # video_url is column C (index 2)
+                    # Update rating (column H) and date_watched (column G)
+                    videos_worksheet.update(f'G{i}', today)  # date_watched
+                    videos_worksheet.update(f'H{i}', feedback)  # rating
+                    print(f"✅ Updated feedback for video at row {i}")
+                    return True
 
-        print(f"❌ Video URL not found in sheets: {video_url}")
-        return False
+            print(f"❌ Video URL not found in sheets: {video_url}")
+            return False
+
+        return retry_on_quota_exceeded(_update_feedback)
 
     except Exception as e:
         print(f"❌ Error updating video feedback: {e}")
@@ -268,22 +311,25 @@ def update_video_notes(video_url: str, notes: str):
     print(f"📝 Recording notes: {notes[:50]}...")
 
     try:
-        client = get_google_sheets_client()
-        sheet = client.open_by_key(GOOGLE_SHEETS_ID)
-        videos_worksheet = sheet.worksheet('videos')
+        def _update_notes():
+            client = get_google_sheets_client()
+            sheet = client.open_by_key(GOOGLE_SHEETS_ID)
+            videos_worksheet = sheet.worksheet('videos')
 
-        # Get all records to find the right row
-        all_records = videos_worksheet.get_all_values()
+            # Get all records to find the right row
+            all_records = videos_worksheet.get_all_values()
 
-        for i, row in enumerate(all_records[1:], start=2):  # Skip header, start at row 2
-            if len(row) >= 3 and row[2] == video_url:  # video_url is column C (index 2)
-                # Update notes (column I)
-                videos_worksheet.update(f'I{i}', notes)
-                print(f"✅ Updated notes for video at row {i}")
-                return True
+            for i, row in enumerate(all_records[1:], start=2):  # Skip header, start at row 2
+                if len(row) >= 3 and row[2] == video_url:  # video_url is column C (index 2)
+                    # Update notes (column I)
+                    videos_worksheet.update(f'I{i}', notes)
+                    print(f"✅ Updated notes for video at row {i}")
+                    return True
 
-        print(f"❌ Video URL not found in sheets: {video_url}")
-        return False
+            print(f"❌ Video URL not found in sheets: {video_url}")
+            return False
+
+        return retry_on_quota_exceeded(_update_notes)
 
     except Exception as e:
         print(f"❌ Error updating video notes: {e}")

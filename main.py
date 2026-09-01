@@ -2200,6 +2200,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
+        # Add startup delay to prevent rapid restart loops on Railway
+        import time
+        import os
+        if os.getenv("RAILWAY_ENVIRONMENT"):
+            print("🚂 Detected Railway environment, adding startup delay...")
+            time.sleep(5)
+
         if args.daily_job:
             print("🕘 Starting daily job mode...")
             asyncio.run(daily_job_mode())
@@ -2214,10 +2221,22 @@ if __name__ == "__main__":
             asyncio.run(railway_listener_mode())
         else:
             print("🎯 Starting single-run mode (current behavior)...")
-            asyncio.run(main())
+
+            # For Railway, we probably want to run the listener instead of single-run
+            if os.getenv("RAILWAY_ENVIRONMENT"):
+                print("🚂 Railway detected: switching to listener mode for persistent deployment")
+                asyncio.run(railway_listener_mode())
+            else:
+                asyncio.run(main())
+
     except KeyboardInterrupt:
         print("\n🛑 Shutting down...")
     except Exception as e:
         print(f"❌ Fatal error: {e}")
         import traceback
         traceback.print_exc()
+
+        # On Railway, wait before exiting to prevent rapid restart loops
+        if os.getenv("RAILWAY_ENVIRONMENT"):
+            print("⏱️  Waiting 30 seconds before exit to prevent rapid restarts...")
+            time.sleep(30)

@@ -1,0 +1,9 @@
+# Railway Procfile for YouTube Hobby Maxxxer
+# This defines the process types for Railway deployment
+
+# Default web process - runs the Railway listener mode
+web: python main.py --railway-listener
+
+# Alternative process definitions for different deployment scenarios:
+# listener: python main.py --listen
+# daily-job: python main.py --daily-job

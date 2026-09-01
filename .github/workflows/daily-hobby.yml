@@ -1,0 +1,52 @@
+name: Daily Hobby Video Recommendation
+
+on:
+  schedule:
+    # Run daily at 2:00 PM UTC (9:00 AM EST / 6:00 AM PST)
+    - cron: '0 14 * * *'
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  daily-video:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create Google Service Account file
+        run: |
+          mkdir -p auth
+          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > ./auth/hobbymaxxxing-service-account.json
+          chmod 600 ./auth/hobbymaxxxing-service-account.json
+
+      - name: Run daily hobby video job
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          GOOGLE_SERVICE_ACCOUNT_FILE: ./auth/hobbymaxxxing-service-account.json
+        run: |
+          echo "🐙 Starting GitHub Actions daily job..."
+          python main.py --github-daily-job
+          echo "✅ Daily job completed successfully!"
+
+      - name: Clean up sensitive files
+        if: always()
+        run: |
+          rm -f ./auth/hobbymaxxxing-service-account.json

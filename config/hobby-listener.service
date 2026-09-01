@@ -1,0 +1,40 @@
+[Unit]
+Description=YouTube Hobby Maxxxer Listener
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/hobbymaxxxing
+ExecStart=/usr/bin/python3 /home/pi/hobbymaxxxing/main.py --listen
+Restart=on-failure
+RestartSec=5
+
+# Environment file (create this with your API keys)
+EnvironmentFile=/home/pi/hobbymaxxxing/.env
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hobby-listener
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/home/pi/hobbymaxxxing
+
+[Install]
+WantedBy=multi-user.target
+
+# Installation instructions:
+# 1. Copy this file to /etc/systemd/system/hobby-listener.service
+# 2. Run: sudo systemctl daemon-reload
+# 3. Run: sudo systemctl enable hobby-listener
+# 4. Run: sudo systemctl start hobby-listener
+# 5. Check status: sudo systemctl status hobby-listener
+# 6. View logs: sudo journalctl -u hobby-listener -f

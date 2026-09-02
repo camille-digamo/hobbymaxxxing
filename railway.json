@@ -5,8 +5,15 @@
     "buildCommand": "pip install --no-cache-dir -r requirements.txt"
   },
   "deploy": {
-    "startCommand": "python check_dependencies.py && python main.py --railway-listener",
+    "startCommand": "python main.py --railway-listener",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
-  }
+  },
+  "cron": [
+    {
+      "name": "testing-hobby-video-15min",
+      "schedule": "*/15 * * * *",
+      "command": "python main.py --github-daily-job"
+    }
+  ]
 }

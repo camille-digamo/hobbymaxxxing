@@ -12,7 +12,7 @@ on:
     # - cron: '43 * * * *'
 
     # TESTING: Run every 15 minutes starting at :07 (disable this after testing) - off-peak minutes
-    - cron: '7,22,37,52 * * * *'
+    # - cron: '7,22,37,52 * * * *'
 
 
 

@@ -9,7 +9,11 @@ on:
     # - cron: '0 14 * * *'
 
     # TESTING: Run every hour at the top of the hour (disable this after testing)
-    - cron: '0 * * * *'
+    # - cron: '0 * * * *'
+
+    # TESTING: Run every 15 minutes (disable this after testing)
+    - cron: '*/15 * * * *'
+
 
 
   # Allow manual trigger for testing

@@ -2,8 +2,15 @@ name: Daily Hobby Video Recommendation
 
 on:
   schedule:
+    # Run daily at 1:00 PM UTC (9:00 AM EDT / 6:00 AM PDT)
+    # - cron: '0 13 * * *'
+
     # Run daily at 2:00 PM UTC (9:00 AM EST / 6:00 AM PST)
-    - cron: '0 14 * * *'
+    # - cron: '0 14 * * *'
+
+    # TESTING: Run every hour at the top of the hour (disable this after testing)
+    - cron: '0 * * * *'
+
 
   # Allow manual trigger for testing
   workflow_dispatch:

@@ -2,17 +2,17 @@ name: Daily Hobby Video Recommendation
 
 on:
   schedule:
-    # Run daily at 1:00 PM UTC (9:00 AM EDT / 6:00 AM PDT)
-    # - cron: '0 13 * * *'
+    # Run daily at 1:17 PM UTC (9:17 AM EDT / 6:17 AM PDT) - off-peak minute
+    # - cron: '17 13 * * *'
 
-    # Run daily at 2:00 PM UTC (9:00 AM EST / 6:00 AM PST)
-    # - cron: '0 14 * * *'
+    # Run daily at 2:17 PM UTC (9:17 AM EST / 6:17 AM PST) - off-peak minute
+    # - cron: '17 14 * * *'
 
-    # TESTING: Run every hour at the top of the hour (disable this after testing)
-    # - cron: '0 * * * *'
+    # TESTING: Run every hour at :43 minutes (disable this after testing) - off-peak minute
+    # - cron: '43 * * * *'
 
-    # TESTING: Run every 15 minutes (disable this after testing)
-    - cron: '*/15 * * * *'
+    # TESTING: Run every 15 minutes starting at :07 (disable this after testing) - off-peak minutes
+    - cron: '7,22,37,52 * * * *'
 
 
 
